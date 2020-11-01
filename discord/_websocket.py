@@ -31,7 +31,7 @@ class Websocket:
                     for handler in self.get_handlers_for_event(event):
                         handler.post(event)
 
-            except (WebSocketConnectionClosedException, ConnectionResetError):
+            except (WebSocketConnectionClosedException, ConnectionResetError, TimeoutError):
                 print('connection lost, reconnecting...')
 
             except BaseException as e:
