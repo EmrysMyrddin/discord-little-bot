@@ -1,3 +1,4 @@
+import os
 import unittest
 
 import websocket
@@ -11,7 +12,7 @@ class BotTest(unittest.TestCase):
             pass
 
         with self.assertRaises(ValueError):
-            MyBot.run()
+            MyBot.run(os.environ['BOT_TOKEN'])
 
     def test_register_commands(self):
         class MyBot(Bot):
@@ -24,7 +25,7 @@ class BotTest(unittest.TestCase):
         self.assertEqual(2, len(MyBot._discord_commands))
 
     def test_run(self):
-        TestBot.run("NzcxODgxNzY1NTg5NjE0NjQy.X5yk6Q.8alrAzo4lCXySTkUIxYo8CfKZPs")
+        TestBot.run(os.environ['BOT_TOKEN'])
 
 
 class TestBot(Bot):
