@@ -24,5 +24,3 @@ class KeyValueStore:
             print(decrement)
             self.values[key] -= decrement
             return self.values[key]
-
-
