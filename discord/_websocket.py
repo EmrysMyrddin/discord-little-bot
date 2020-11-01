@@ -24,7 +24,7 @@ class Websocket:
 
         while self.listening:
             try:
-                self.ws = create_connection('wss://gateway.discord.gg/?v=8&encoding=json', )
+                self.ws = create_connection('wss://gateway.discord.gg/?v=8&encoding=json')
                 while True:
                     event = self.read()
                     if not event: continue
@@ -52,24 +52,28 @@ class Websocket:
 
         event = json.loads(data)
         self.last_sequence = event['s']
-        print('receive: {}/{}'.format(event['op'], event['t']))
+        print(f"receive: {event['op']}/{event['t']}")
         return Event(event)
 
     def send(self, op_code, payload):
         message = {'op': op_code, 'd': payload}
-        print('send: {}'.format(op_code))
+        print(f'send: {op_code}')
         self.ws.send(json.dumps(message))
 
     def reconnect(self, status=STATUS_NORMAL):
         print('disconnecting')
-        try: self.ws.close(status=status)
-        except WebSocketConnectionClosedException: pass
+        try:
+            self.ws.close(status=status)
+        except WebSocketConnectionClosedException:
+            pass
 
     def disconnect(self):
         print('disconnecting')
         self.listening = False
-        try: self.ws.close()
-        except WebSocketConnectionClosedException: pass
+        try:
+            self.ws.close()
+        except WebSocketConnectionClosedException:
+            pass
         Group().imap_unordered(lambda handler: handler.close(), self.handlers)
 
 
@@ -89,7 +93,7 @@ class Handler(Actor):
 
     @classmethod
     def print(cls, message: str, *args, **kwargs):
-        print("[{}] {}".format(cls.__name__, message.format(*args, **kwargs)))
+        print(f"[{cls.__name__}]", message, *args, **kwargs)
 
 
 class IdentityHandler(Handler):
@@ -135,7 +139,6 @@ class EventHandler(Handler):
 
     def _receive(self, event):
         if event.type == 'GUILD_CREATE':
-
             self.ws.create_bot_instance(event.payload['id'])
 
 
@@ -153,7 +156,7 @@ class HeartbeatHandler(Handler):
             self.heartbeat_interval = event.payload['heartbeat_interval'] / 1000
             if self._ping_greenlet: gevent.killall([self._ping_greenlet])
             self._ping_greenlet = gevent.spawn(self.ping)
-            self.print('ping began with {} interval', self.heartbeat_interval)
+            self.print(f'ping began with {self.heartbeat_interval} interval')
 
         elif event.op_code == 1:
             self.print('ping required')

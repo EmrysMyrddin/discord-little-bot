@@ -26,10 +26,10 @@ class Bot(Handler):
             self.print("ignoring message from other guild")
             return
 
-        self.print('handling message from {}', event.payload['author']['username'])
+        self.print(f"handling message from {event.payload['author']['username']}")
         command = self._find_matching_command(event.payload)
         if not command:
-            self.print('no command found for message "{}"', event.payload['content'])
+            self.print(f'no command found for message "{event.payload["content"]}"')
             return
 
         command.running = gevent.spawn(command, self, Message(event.payload, self.ws))
