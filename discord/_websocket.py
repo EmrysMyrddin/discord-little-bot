@@ -3,7 +3,9 @@ import gevent
 from gevent import monkey
 from gevent.pool import Group
 from websocket import create_connection, WebSocketConnectionClosedException, STATUS_NORMAL
-from discord._actor import Actor
+
+from ._payloads.guild import Guild
+from ._actor import Actor
 
 monkey.patch_all()
 
@@ -13,18 +15,18 @@ class Websocket:
         self.bot_token = bot_token
         self.bot_class = bot_class
 
-        self.handlers = [
+        self._handlers = [
             IdentityHandler(self),
-            EventHandler(self),
+            GuildsHandler(self),
             HeartbeatHandler(self),
         ]
 
     def listen(self):
-        self.listening = True
+        self._listening = True
 
-        while self.listening:
+        while self._listening:
             try:
-                self.ws = create_connection('wss://gateway.discord.gg/?v=8&encoding=json')
+                self._ws = create_connection('wss://gateway.discord.gg/?v=8&encoding=json')
                 while True:
                     event = self.read()
                     if not event: continue
@@ -39,15 +41,18 @@ class Websocket:
                 raise e
 
     def get_handlers_for_event(self, event):
-        return [handler for handler in self.handlers
+        return [handler for handler in self._handlers
                 if event.op_code in handler.listen_for_events
-                and event.type in handler.listen_for_events[event.op_code]]
+                and event.type in handler.listen_for_events[event.op_code]
+                and (handler.guild_id is None or event.payload.get('guild_id', None) == handler.guild_id)]
 
     def create_bot_instance(self, *args, **kwargs):
-        self.handlers.append(self.bot_class(self, *args, **kwargs))
+        bot_instance = self.bot_class(self, *args, **kwargs)
+        self._handlers.append(bot_instance)
+        return bot_instance
 
     def read(self):
-        data = self.ws.recv()
+        data = self._ws.recv()
         if not data: return
 
         event = json.loads(data)
@@ -58,23 +63,21 @@ class Websocket:
     def send(self, op_code, payload):
         message = {'op': op_code, 'd': payload}
         print(f'send: {op_code}')
-        self.ws.send(json.dumps(message))
+        self._ws.send(json.dumps(message))
 
     def reconnect(self, status=STATUS_NORMAL):
         print('disconnecting')
         try:
-            self.ws.close(status=status)
+            self._ws.close(status=status)
         except WebSocketConnectionClosedException:
             pass
 
     def disconnect(self):
         print('disconnecting')
-        self.listening = False
-        try:
-            self.ws.close()
-        except WebSocketConnectionClosedException:
-            pass
-        Group().imap_unordered(lambda handler: handler.close(), self.handlers)
+        self._listening = False
+        try: self._ws.close()
+        except WebSocketConnectionClosedException: pass
+        Group().imap_unordered(lambda handler: handler.close(), self._handlers)
 
 
 class Event:
@@ -85,7 +88,11 @@ class Event:
 
 
 class Handler(Actor):
+    """listen_for_events is a dict of op_codes and list of event types you want listen"""
     listen_for_events = {}
+
+    """Is guild_id is not None, only event with the given guild_id will be dispatched to this handler"""
+    guild_id = None
 
     def __init__(self, ws: Websocket):
         Actor.__init__(self)
@@ -93,6 +100,7 @@ class Handler(Actor):
 
     @classmethod
     def print(cls, message: str, *args, **kwargs):
+        """Print a debug log"""
         print(f"[{cls.__name__}]", message, *args, **kwargs)
 
 
@@ -134,12 +142,18 @@ class IdentityHandler(Handler):
             self.ws.reconnect()
 
 
-class EventHandler(Handler):
+class GuildsHandler(Handler):
     listen_for_events = {0: ['GUILD_CREATE']}
+
+    def __init__(self, ws: Websocket):
+        super().__init__(ws)
+        self.guilds = {}
 
     def _receive(self, event):
         if event.type == 'GUILD_CREATE':
-            self.ws.create_bot_instance(event.payload['id'])
+            guild = Guild(event.payload)
+            if guild.id not in self.guilds:
+                self.guilds[guild.id] = self.ws.create_bot_instance(guild=guild)
 
 
 class HeartbeatHandler(Handler):

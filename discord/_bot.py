@@ -3,39 +3,42 @@ from typing import Callable, Any
 
 import gevent
 
-from discord._key_value_store import KeyValueStore
-from discord._message import Message
-from discord._websocket import Websocket, Handler
+from ._key_value_store import KeyValueStore
+from ._payloads.guild import Guild
+from ._payloads.message import Message
+from ._websocket import Websocket, Handler
 
 
 class Bot(Handler):
-    listen_for_events = {0: ['MESSAGE_CREATE']}
+    listen_for_events = {0: ['MESSAGE_CREATE', 'GUILD_CREATE', 'GUILD_UPDATE']}
     _discord_commands = []
 
-    def __init__(self, ws, guild_id):
+    def __init__(self, ws, guild):
         Handler.__init__(self, ws)
         self.kv = KeyValueStore()
-        self.guild_id = guild_id
+        self.guild_id = guild.id
+        self.guild = guild
         self.disabled_commands = {}
 
     def __init_subclass__(cls):
         cls._discord_commands = cls._get_commands()
 
     def _receive(self, event):
-        if event.payload['guild_id'] != self.guild_id:
-            self.print("ignoring message from other guild")
-            return
+        if event.type == 'GUILD_UPDATE' or event.type == 'GUILD_CREATE':
+            self.guild = Guild(event.payload)
 
-        self.print(f"handling message from {event.payload['author']['username']}")
-        command = self._find_matching_command(event.payload)
-        if not command:
-            self.print(f'no command found for message "{event.payload["content"]}"')
-            return
+        elif event.type == 'MESSAGE_CREATE':
+            self.print(f"handling message from {event.payload['author']['username']} in guild {self.guild_id}")
+            command = self._find_matching_command(event.payload)
+            if not command:
+                self.print(f'no command found for message "{event.payload["content"]}"')
+                return
 
-        command.running = gevent.spawn(command, self, Message(event.payload, self.ws))
-        if command.cooldown > 0:
-            self.disable_command(command)
-            gevent.spawn_later(command.cooldown, self.enable_command, command)
+            # FIXME: Keep track of spawned command handlers and kill them when the bot is shutdown ?
+            gevent.spawn(command, self, Message(event.payload, self.ws))
+            if command.cooldown > 0:
+                self.disable_command(command)
+                gevent.spawn_later(command.cooldown, self.enable_command, command)
 
     def enable_command(self, command):
         del self.disabled_commands[command]

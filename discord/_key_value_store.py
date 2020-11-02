@@ -1,4 +1,4 @@
-from discord._rw_lock import RWLock
+from ._rw_lock import RWLock
 
 
 class KeyValueStore:
