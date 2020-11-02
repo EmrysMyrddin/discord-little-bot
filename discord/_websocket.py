@@ -2,6 +2,7 @@ import json
 import gevent
 from gevent import monkey
 from gevent.pool import Group
+from typing import Dict
 from websocket import create_connection, WebSocketConnectionClosedException, STATUS_NORMAL
 
 from ._payloads.guild import Guild
@@ -143,17 +144,23 @@ class IdentityHandler(Handler):
 
 
 class GuildsHandler(Handler):
-    listen_for_events = {0: ['GUILD_CREATE']}
+    listen_for_events = {0: ['GUILD_CREATE', 'GUILD_DELETE']}
 
     def __init__(self, ws: Websocket):
         super().__init__(ws)
-        self.guilds = {}
+        self.guilds: Dict[str, Handler] = {}
 
     def _receive(self, event):
         if event.type == 'GUILD_CREATE':
             guild = Guild(event.payload)
             if guild.id not in self.guilds:
                 self.guilds[guild.id] = self.ws.create_bot_instance(guild=guild)
+
+        if event.type == 'GUILD_DELETE':
+            guild_id = event.payload['id']
+            if guild_id in self.guilds:
+                self.guilds[guild_id].stop()
+                del self.guilds[guild_id]
 
 
 class HeartbeatHandler(Handler):
